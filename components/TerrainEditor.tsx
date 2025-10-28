@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -13,17 +14,16 @@ interface TerrainEditorProps {
     brushSettings: BrushSettings;
 }
 
-// Define colors for different elevation levels for a clean, monochromatic look.
+// Define colors for different elevation levels, including water.
 const SNOW_LEVEL = 40;
 const ROCK_LEVEL = 25;
-const PLAIN_LEVEL = 0;
-const VALLEY_LEVEL = -10;
+const LAND_LEVEL = 0; // Sea level is at height 0
 
 const snowColor = new THREE.Color(0xffffff);      // Pure white for peaks
 const rockColor = new THREE.Color(0x999999);      // Grey for cliffs/rocks
-const plainColor = new THREE.Color(0xcccccc);     // Light grey for base terrain
-const valleyColor = new THREE.Color(0xaaaaaa);    // Darker grey for low areas
-const underwaterColor = new THREE.Color(0x777777); // Darkest for "underwater"
+const landColor = new THREE.Color(0xcccccc);      // Light grey for base terrain
+const waterColor = new THREE.Color(0x5c95c9);     // Blue for water
+
 
 export const TerrainEditor: React.FC<TerrainEditorProps> = ({ heightData, onTerrainUpdate, onPaintStart, onPaintEnd, tool, brushSettings }) => {
     const mountRef = useRef<HTMLDivElement>(null);
@@ -77,16 +77,16 @@ export const TerrainEditor: React.FC<TerrainEditorProps> = ({ heightData, onTerr
                 if (height >= SNOW_LEVEL) {
                     tempColor.copy(snowColor);
                 } else if (height >= ROCK_LEVEL) {
+                    // Blend from rock to snow
                     const t = (height - ROCK_LEVEL) / (SNOW_LEVEL - ROCK_LEVEL);
                     tempColor.lerpColors(rockColor, snowColor, t);
-                } else if (height >= PLAIN_LEVEL) {
-                    const t = (height - PLAIN_LEVEL) / (ROCK_LEVEL - PLAIN_LEVEL);
-                    tempColor.lerpColors(plainColor, rockColor, t);
-                } else if (height >= VALLEY_LEVEL) {
-                    const t = (height - VALLEY_LEVEL) / (PLAIN_LEVEL - VALLEY_LEVEL);
-                    tempColor.lerpColors(valleyColor, plainColor, t);
+                } else if (height >= LAND_LEVEL) {
+                    // Blend from land to rock
+                    const t = (height - LAND_LEVEL) / (ROCK_LEVEL - LAND_LEVEL);
+                    tempColor.lerpColors(landColor, rockColor, t);
                 } else {
-                    tempColor.copy(underwaterColor);
+                    // Below land level is water
+                    tempColor.copy(waterColor);
                 }
                 colors.setXYZ(i, tempColor.r, tempColor.g, tempColor.b);
             }

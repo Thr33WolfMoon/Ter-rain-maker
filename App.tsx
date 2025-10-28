@@ -15,7 +15,7 @@ const App: React.FC = () => {
         strength: 0.5,
     });
 
-    const initialHeightData = new Float32Array((TERRAIN_SEGMENTS_X + 1) * (TERRAIN_SEGMENTS_Y + 1)).fill(0);
+    const initialHeightData = new Float32Array((TERRAIN_SEGMENTS_X + 1) * (TERRAIN_SEGMENTS_Y + 1)).fill(-10);
     const [committedHeightData, setCommittedHeightData, undo, redo, canUndo, canRedo] = useUndoableState<Float32Array>(initialHeightData);
     
     // 'liveHeightData' is what's actively being edited and rendered.

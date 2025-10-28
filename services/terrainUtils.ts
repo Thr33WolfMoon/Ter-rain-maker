@@ -5,7 +5,7 @@ import { TERRAIN_WIDTH, TERRAIN_HEIGHT, TERRAIN_SEGMENTS_X, TERRAIN_SEGMENTS_Y }
 
 const VERTICES_X = TERRAIN_SEGMENTS_X + 1;
 const VERTICES_Y = TERRAIN_SEGMENTS_Y + 1;
-const BRUSH_INTENSITY_MULTIPLIER = 5.0;
+const BRUSH_INTENSITY_MULTIPLIER = 15.0;
 
 const smoothStep = (min: number, max: number, value: number) => {
     const x = Math.max(0, Math.min(1, (value - min) / (max - min)));
