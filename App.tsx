@@ -6,7 +6,7 @@ import { Toolbar } from './components/Toolbar';
 import { useUndoableState } from './hooks/useUndoableState';
 import { applyBrush } from './services/terrainUtils';
 import { Tool, BrushSettings } from './types';
-import { TERRAIN_SEGMENTS_X, TERRAIN_SEGMENTS_Y } from './constants';
+import { TERRAIN_SEGMENTS_X, TERRAIN_SEGMENTS_Y, SEA_FLOOR_LEVEL } from './constants';
 
 const App: React.FC = () => {
     const [tool, setTool] = useState<Tool>(Tool.Raise);
@@ -15,7 +15,7 @@ const App: React.FC = () => {
         strength: 0.5,
     });
 
-    const initialHeightData = new Float32Array((TERRAIN_SEGMENTS_X + 1) * (TERRAIN_SEGMENTS_Y + 1)).fill(-10);
+    const initialHeightData = new Float32Array((TERRAIN_SEGMENTS_X + 1) * (TERRAIN_SEGMENTS_Y + 1)).fill(SEA_FLOOR_LEVEL);
     const [committedHeightData, setCommittedHeightData, undo, redo, canUndo, canRedo] = useUndoableState<Float32Array>(initialHeightData);
     
     // 'liveHeightData' is what's actively being edited and rendered.

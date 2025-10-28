@@ -1,7 +1,7 @@
 
 import { Vector3 } from 'three';
 import { Tool, BrushSettings } from '../types';
-import { TERRAIN_WIDTH, TERRAIN_HEIGHT, TERRAIN_SEGMENTS_X, TERRAIN_SEGMENTS_Y } from '../constants';
+import { TERRAIN_WIDTH, TERRAIN_HEIGHT, TERRAIN_SEGMENTS_X, TERRAIN_SEGMENTS_Y, SEA_FLOOR_LEVEL } from '../constants';
 
 const VERTICES_X = TERRAIN_SEGMENTS_X + 1;
 const VERTICES_Y = TERRAIN_SEGMENTS_Y + 1;
@@ -38,7 +38,15 @@ const applyRaiseLower = (
                 const amount = (isRaise ? 1 : -1) * brush.strength * falloff * BRUSH_INTENSITY_MULTIPLIER;
                 
                 const index = y * VERTICES_X + x;
-                newHeightData[index] += amount;
+                const currentHeight = newHeightData[index];
+                let newHeight = currentHeight + amount;
+
+                if (!isRaise) {
+                    // Clamp the height to the sea floor level when lowering
+                    newHeight = Math.max(SEA_FLOOR_LEVEL, newHeight);
+                }
+
+                newHeightData[index] = newHeight;
             }
         }
     }
