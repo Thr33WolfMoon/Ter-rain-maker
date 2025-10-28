@@ -1,7 +1,9 @@
-
 import React from 'react';
 import { Tool, BrushSettings } from '../types';
-import { RaiseIcon, LowerIcon, FlattenIcon, SmoothIcon, UndoIcon, RedoIcon } from './Icon';
+import { RaiseIcon, LowerIcon, FlattenIcon, SmoothIcon, PaintIcon, PlaneIcon, UndoIcon, RedoIcon } from './Icon';
+import { PAINT_PALETTE } from '../constants';
+import { Color } from 'three';
+
 
 interface ToolbarProps {
     activeTool: Tool;
@@ -12,6 +14,8 @@ interface ToolbarProps {
     redo: () => void;
     canUndo: boolean;
     canRedo: boolean;
+    paintColor: Color;
+    onSetPaintColor: (color: Color) => void;
 }
 
 const ToolButton: React.FC<{
@@ -34,7 +38,7 @@ const ToolButton: React.FC<{
 
 
 export const Toolbar: React.FC<ToolbarProps> = ({
-    activeTool, onSetTool, brushSettings, onSetBrushSettings, undo, redo, canUndo, canRedo
+    activeTool, onSetTool, brushSettings, onSetBrushSettings, undo, redo, canUndo, canRedo, paintColor, onSetPaintColor
 }) => {
 
     return (
@@ -47,7 +51,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                     <ToolButton label="Raise" icon={<RaiseIcon />} isActive={activeTool === Tool.Raise} onClick={() => onSetTool(Tool.Raise)} />
                     <ToolButton label="Lower" icon={<LowerIcon />} isActive={activeTool === Tool.Lower} onClick={() => onSetTool(Tool.Lower)} />
                     <ToolButton label="Flatten" icon={<FlattenIcon />} isActive={activeTool === Tool.Flatten} onClick={() => onSetTool(Tool.Flatten)} />
+                    <ToolButton label="Plane" icon={<PlaneIcon />} isActive={activeTool === Tool.Plane} onClick={() => onSetTool(Tool.Plane)} />
                     <ToolButton label="Smooth" icon={<SmoothIcon />} isActive={activeTool === Tool.Smooth} onClick={() => onSetTool(Tool.Smooth)} />
+                    <ToolButton label="Paint" icon={<PaintIcon />} isActive={activeTool === Tool.Paint} onClick={() => onSetTool(Tool.Paint)} />
                 </div>
             </div>
 
@@ -63,30 +69,34 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                             id="brush-size"
                             type="range"
                             min="1"
-                            max="200"
+                            max="40000"
                             value={brushSettings.size}
                             onChange={(e) => onSetBrushSettings({ ...brushSettings, size: parseFloat(e.target.value) })}
                             className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                         />
                     </div>
-                    <div>
-                        <label htmlFor="brush-strength" className="flex justify-between text-sm text-gray-300 mb-1">
-                            <span>Strength</span>
-                            <span>{(brushSettings.strength * 100).toFixed(0)}%</span>
-                        </label>
-                         <input
-                            id="brush-strength"
-                            type="range"
-                            min="0.01"
-                            max="1"
-                            step="0.01"
-                            value={brushSettings.strength}
-                            onChange={(e) => onSetBrushSettings({ ...brushSettings, strength: parseFloat(e.target.value) })}
-                            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                        />
-                    </div>
                 </div>
             </div>
+
+            {activeTool === Tool.Paint && (
+                <div>
+                    <h2 className="text-sm font-semibold text-gray-400 mb-3">Palette</h2>
+                    <div className="grid grid-cols-4 gap-2">
+                        {PAINT_PALETTE.map(({ name, color }) => (
+                            <button
+                                key={name}
+                                title={name}
+                                onClick={() => onSetPaintColor(color)}
+                                className={`w-full aspect-square rounded-md transition-all border-2 ${
+                                    paintColor.equals(color) ? 'border-indigo-400 scale-110' : 'border-gray-700 hover:border-gray-500'
+                                }`}
+                                style={{ backgroundColor: `#${color.getHexString()}` }}
+                                aria-label={`Paint with ${name} color`}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
             
             <div>
                 <h2 className="text-sm font-semibold text-gray-400 mb-3">History</h2>
