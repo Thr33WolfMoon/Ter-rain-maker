@@ -1,0 +1,5 @@
+{
+  "name": "Terrain Forge Kit",
+  "description": "A web-based 3D terrain editor inspired by runtime terrain tools. Sculpt and paint landscapes directly in your browser using intuitive tools for height manipulation, smoothing, and flattening. Built with React, Three.js, and Tailwind CSS.",
+  "requestFramePermissions": []
+}

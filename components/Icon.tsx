@@ -1,0 +1,53 @@
+
+import React from 'react';
+
+const iconProps = {
+    className: "w-6 h-6",
+    strokeWidth: 1.5,
+    stroke: "currentColor",
+    fill: "none",
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const
+};
+
+export const RaiseIcon = () => (
+    <svg {...iconProps} viewBox="0 0 24 24">
+        <path d="M12 5l-6 6h4v6h4v-6h4l-6-6z" />
+        <path d="M4 17h16" />
+    </svg>
+);
+
+export const LowerIcon = () => (
+    <svg {...iconProps} viewBox="0 0 24 24">
+        <path d="M12 19l6-6h-4V7h-4v6H6l6 6z" />
+        <path d="M4 17h16" />
+    </svg>
+);
+
+export const FlattenIcon = () => (
+    <svg {...iconProps} viewBox="0 0 24 24">
+        <path d="M3 8h18M3 16h18M9 3v18M15 3v18" />
+    </svg>
+);
+
+export const SmoothIcon = () => (
+    <svg {...iconProps} viewBox="0 0 24 24">
+        <path d="M4 8c0-2.21 1.79-4 4-4h8c2.21 0 4 1.79 4 4v8c0 2.21-1.79 4-4 4H8c-2.21 0-4-1.79-4-4V8z" />
+        <path d="M7 12c.5-1.5 2-2 4-2s3.5.5 4 2c.5 1.5-2 2-4 2s-3.5-.5-4-2z" stroke="currentColor" fill="currentColor" />
+    </svg>
+);
+
+
+export const UndoIcon = () => (
+    <svg {...iconProps} viewBox="0 0 24 24">
+        <path d="M10 19H5a2 2 0 01-2-2V7a2 2 0 012-2h5" />
+        <path d="M8 1l-4 4 4 4" />
+    </svg>
+);
+
+export const RedoIcon = () => (
+    <svg {...iconProps} viewBox="0 0 24 24">
+        <path d="M14 5h5a2 2 0 012 2v10a2 2 0 01-2 2h-5" />
+        <path d="M16 19l4-4-4-4" />
+    </svg>
+);
