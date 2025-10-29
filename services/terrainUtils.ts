@@ -1,5 +1,6 @@
+
 import { Vector3, Color } from 'three';
-import { Tool, BrushSettings } from '../types';
+import { Tool, BrushSettings, PaintMode } from '../types';
 import { 
     TERRAIN_WIDTH, TERRAIN_HEIGHT, TERRAIN_SEGMENTS_X, TERRAIN_SEGMENTS_Y, SEA_FLOOR_LEVEL,
     SNOW_LEVEL, ROCK_LEVEL, LAND_LEVEL,
@@ -10,6 +11,31 @@ const VERTICES_X = TERRAIN_SEGMENTS_X + 1;
 const VERTICES_Y = TERRAIN_SEGMENTS_Y + 1;
 const BRUSH_INTENSITY_MULTIPLIER = 3000.0;
 const DEFAULT_STRENGTH = 0.5;
+
+let textureCanvas: HTMLCanvasElement | null = null;
+let textureCtx: CanvasRenderingContext2D | null = null;
+
+// A helper to get a canvas context for sampling texture pixels.
+// It caches the canvas and only redraws when the image source changes.
+const getTextureContext = (image: HTMLImageElement): CanvasRenderingContext2D | null => {
+    if (!textureCanvas || textureCanvas.width !== image.width || textureCanvas.height !== image.height) {
+        textureCanvas = document.createElement('canvas');
+        textureCanvas.width = image.width;
+        textureCanvas.height = image.height;
+        textureCtx = textureCanvas.getContext('2d', { willReadFrequently: true });
+        if (textureCtx) {
+            textureCtx.drawImage(image, 0, 0);
+        }
+    }
+    // If the image is already on the canvas, we don't need to redraw.
+    // This assumes the same image element instance is passed until a new one is loaded.
+    else if (textureCtx && textureCtx.canvas.width === image.width && textureCtx.canvas.height === image.height) {
+         // To be safe, we can add a check to see if the image is the same one
+         // but for simplicity, we assume the App component manages the image object's identity.
+    }
+
+    return textureCtx;
+};
 
 const smoothStep = (min: number, max: number, value: number) => {
     const x = Math.max(0, Math.min(1, (value - min) / (max - min)));
@@ -41,7 +67,6 @@ export const generateInitialColorData = (heightData: Float32Array): Float32Array
     return colorData;
 };
 
-// FIX: Update return type to match what `applyBrush` expects.
 const applyRaiseLower = (
     heightData: Float32Array,
     colorData: Float32Array,
@@ -74,7 +99,9 @@ const applyRaiseLower = (
                 const currentHeight = newHeightData[index];
                 let newHeight = currentHeight + amount;
 
-                if (!isRaise) {
+                if (isRaise) {
+                    newHeight = Math.min(newHeight, TERRAIN_WIDTH);
+                } else {
                     newHeight = Math.max(SEA_FLOOR_LEVEL, newHeight);
                 }
                 newHeightData[index] = newHeight;
@@ -86,11 +113,9 @@ const applyRaiseLower = (
             }
         }
     }
-    // FIX: Update returned object properties to match the expected type.
     return { heightData: newHeightData, colorData: newColorData };
 };
 
-// FIX: Update return type to match what `applyBrush` expects.
 const applyFlatten = (
     heightData: Float32Array,
     colorData: Float32Array,
@@ -130,11 +155,9 @@ const applyFlatten = (
             }
         }
     }
-    // FIX: Update returned object properties to match the expected type.
     return { heightData: newHeightData, colorData: newColorData };
 };
 
-// FIX: Update return type to match what `applyBrush` expects.
 const applySmooth = (
     heightData: Float32Array,
     colorData: Float32Array,
@@ -188,16 +211,15 @@ const applySmooth = (
                     const currentHeight = heightData[index];
                     newHeightData[index] = currentHeight + (averageHeight - currentHeight) * strength;
 
-                    // FIX: The `Color` type in three.js does not have a `divideScalar` method. Use `multiplyScalar` with the reciprocal to achieve division.
-                    const averageColor = totalColor.multiplyScalar(1/neighborCount);
-                    const currentColor = tempColor.fromArray(colorData, index * 3);
+                    const averageColor = totalColor.clone().multiplyScalar(1 / neighborCount);
+                    const currentColor = new Color().fromArray(colorData, index * 3);
+                    
                     currentColor.lerp(averageColor, strength);
                     currentColor.toArray(newColorData, index * 3);
                 }
             }
         }
     }
-    // FIX: Update returned object properties to match the expected type.
     return { heightData: newHeightData, colorData: newColorData };
 };
 
@@ -241,6 +263,61 @@ const applyPaint = (
     }
     return newColorData;
 };
+
+const applyTexturePaint = (
+    heightData: Float32Array,
+    colorData: Float32Array,
+    intersectionPoint: Vector3,
+    brush: BrushSettings,
+    texture: HTMLImageElement
+): Float32Array => {
+    const newColorData = new Float32Array(colorData);
+    const brushRadius = brush.size / 2;
+    const brushRadiusSq = brushRadius * brushRadius;
+    const existingColor = new Color();
+    const textureColor = new Color();
+
+    const ctx = getTextureContext(texture);
+    if (!ctx) return newColorData;
+
+    for (let y = 0; y < VERTICES_Y; y++) {
+        for (let x = 0; x < VERTICES_X; x++) {
+            const vertexX = (x / TERRAIN_SEGMENTS_X - 0.5) * TERRAIN_WIDTH;
+            const vertexZ = (y / TERRAIN_SEGMENTS_Y - 0.5) * TERRAIN_HEIGHT;
+
+            const dx = vertexX - intersectionPoint.x;
+            const dz = vertexZ - intersectionPoint.z;
+            const distSq = dx * dx + dz * dz;
+
+            if (distSq < brushRadiusSq) {
+                const index = y * VERTICES_X + x;
+                const currentHeight = heightData[index];
+                
+                if (currentHeight >= LAND_LEVEL) {
+                    // Map vertex position within the brush to texture UV coordinates
+                    const u = (dx / brushRadius + 1) / 2;
+                    const v = 1 - ((dz / brushRadius + 1) / 2); // Invert Z for correct image orientation
+
+                    const texX = Math.floor(u * texture.width);
+                    const texY = Math.floor(v * texture.height);
+                    
+                    const pixelData = ctx.getImageData(texX, texY, 1, 1).data;
+                    textureColor.setRGB(pixelData[0] / 255, pixelData[1] / 255, pixelData[2] / 255);
+
+                    const distance = Math.sqrt(distSq);
+                    const falloff = 1 - smoothStep(0, brushRadius, distance);
+                    const strength = DEFAULT_STRENGTH * falloff;
+                    
+                    existingColor.fromArray(newColorData, index * 3);
+                    existingColor.lerp(textureColor, strength);
+                    existingColor.toArray(newColorData, index * 3);
+                }
+            }
+        }
+    }
+    return newColorData;
+};
+
 
 const applyPlane = (
     heightData: Float32Array,
@@ -298,6 +375,84 @@ const applyPlane = (
     return { heightData: newHeightData, colorData: newColorData };
 };
 
+export const applyGlobalSmooth = (
+    heightData: Float32Array,
+    strength: number = 0.1
+): { heightData: Float32Array, colorData: Float32Array } => {
+    const readHeightData = new Float32Array(heightData);
+    const newHeightData = new Float32Array(heightData);
+
+    for (let y = 0; y < VERTICES_Y; y++) {
+        for (let x = 0; x < VERTICES_X; x++) {
+            let totalHeight = 0;
+            let neighborCount = 0;
+
+            for (let j = -1; j <= 1; j++) {
+                for (let i = -1; i <= 1; i++) {
+                    const neighborX = x + i;
+                    const neighborY = y + j;
+
+                    if (neighborX >= 0 && neighborX < VERTICES_X && neighborY >= 0 && neighborY < VERTICES_Y) {
+                        const neighborIndex = neighborY * VERTICES_X + neighborX;
+                        totalHeight += readHeightData[neighborIndex];
+                        neighborCount++;
+                    }
+                }
+            }
+            
+            if (neighborCount > 0) {
+                const averageHeight = totalHeight / neighborCount;
+                const index = y * VERTICES_X + x;
+                const currentHeight = readHeightData[index];
+                
+                newHeightData[index] = currentHeight + (averageHeight - currentHeight) * strength;
+            }
+        }
+    }
+    
+    const newColorData = generateInitialColorData(newHeightData);
+
+    return { heightData: newHeightData, colorData: newColorData };
+};
+
+export const applyGlobalFlatten = (
+    heightData: Float32Array,
+    strength: number = 0.1
+): { heightData: Float32Array, colorData: Float32Array } => {
+    const newHeightData = new Float32Array(heightData);
+
+    let totalLandHeight = 0;
+    let landVertexCount = 0;
+
+    // First, calculate the average height of only the land vertices (above or at water level).
+    for (let i = 0; i < heightData.length; i++) {
+        if (heightData[i] >= LAND_LEVEL) {
+            totalLandHeight += heightData[i];
+            landVertexCount++;
+        }
+    }
+
+    // If there is no land, do nothing.
+    if (landVertexCount === 0) {
+        const newColorData = generateInitialColorData(heightData);
+        return { heightData, colorData: newColorData };
+    }
+
+    const averageLandHeight = totalLandHeight / landVertexCount;
+
+    // Second, apply the flatten effect ONLY to the land vertices.
+    for (let i = 0; i < heightData.length; i++) {
+        const currentHeight = heightData[i];
+        if (currentHeight >= LAND_LEVEL) {
+             newHeightData[i] = currentHeight + (averageLandHeight - currentHeight) * strength;
+        }
+    }
+
+    const newColorData = generateInitialColorData(newHeightData);
+
+    return { heightData: newHeightData, colorData: newColorData };
+};
+
 
 export const applyBrush = (
     heightData: Float32Array,
@@ -305,7 +460,12 @@ export const applyBrush = (
     intersectionPoint: Vector3,
     tool: Tool,
     brush: BrushSettings,
-    options: { targetHeight?: number; paintColor?: Color }
+    options: { 
+        targetHeight?: number;
+        paintColor?: Color;
+        paintMode?: PaintMode;
+        paintTexture?: HTMLImageElement | null;
+    }
 ): { heightData: Float32Array; colorData: Float32Array } | null => {
     switch (tool) {
         case Tool.Raise:
@@ -321,9 +481,15 @@ export const applyBrush = (
             if (options.targetHeight === undefined) return null;
             return applyPlane(heightData, colorData, intersectionPoint, brush, options.targetHeight);
         case Tool.Paint:
-            if (!options.paintColor) return null;
-            const newColorData = applyPaint(heightData, colorData, intersectionPoint, brush, options.paintColor);
-            return { heightData, colorData: newColorData };
+            if (options.paintMode === 'texture' && options.paintTexture) {
+                const newColorData = applyTexturePaint(heightData, colorData, intersectionPoint, brush, options.paintTexture);
+                return { heightData, colorData: newColorData };
+            }
+            if (options.paintMode === 'color' && options.paintColor) {
+                const newColorData = applyPaint(heightData, colorData, intersectionPoint, brush, options.paintColor);
+                return { heightData, colorData: newColorData };
+            }
+            return null;
         default:
             return null;
     }

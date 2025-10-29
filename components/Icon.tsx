@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 const iconProps = {
@@ -71,5 +72,33 @@ export const ExportIcon = () => (
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
         <polyline points="17 8 12 3 7 8" />
         <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+);
+
+export const ErosionIcon = () => (
+    <svg {...iconProps} viewBox="0 0 24 24">
+        <path d="M5 20h14L12 4z" />
+        <path d="M12 8c-2 2-2 4 0 6s2 2 0 4" />
+    </svg>
+);
+
+export const ImportPaletteIcon = () => (
+    <svg {...iconProps} viewBox="0 0 24 24">
+        <path d="M17.25 9c0 2.899-2.351 5.25-5.25 5.25S6.75 11.899 6.75 9s2.351-5.25 5.25-5.25S17.25 6.101 17.25 9z" />
+        <path d="M12 14.25c-3.536 0-6.536 2.007-7.962 4.938A8.956 8.956 0 0012 21a8.956 8.956 0 007.962-1.812C18.536 16.257 15.536 14.25 12 14.25z" />
+        <path d="M19 12h2v2h-2v-2z" />
+        <path d="M19 8h2v2h-2V8z" />
+        <path d="M19 16h2v2h-2v-2z" />
+        <path d="M3 12h2v2H3v-2z" />
+        <path d="M3 8h2v2H3V8z" />
+        <path d="M3 16h2v2H3v-2z" />
+    </svg>
+);
+
+export const ImportTextureIcon = () => (
+    <svg {...iconProps} viewBox="0 0 24 24">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+        <circle cx="8.5" cy="8.5" r="1.5" />
+        <polyline points="21 15 16 10 5 21" />
     </svg>
 );

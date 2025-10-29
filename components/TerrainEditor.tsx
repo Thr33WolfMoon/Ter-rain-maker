@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -17,10 +18,12 @@ interface TerrainEditorProps {
     tool: Tool;
     brushSettings: BrushSettings;
     sunBrightness: number;
+    undo: () => void;
+    redo: () => void;
 }
 
 export const TerrainEditor: React.FC<TerrainEditorProps> = ({ 
-    heightData, colorData, onTerrainUpdate, onPaintStart, onPaintEnd, tool, brushSettings, sunBrightness 
+    heightData, colorData, onTerrainUpdate, onPaintStart, onPaintEnd, tool, brushSettings, sunBrightness, undo, redo
 }) => {
     const mountRef = useRef<HTMLDivElement>(null);
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -35,6 +38,10 @@ export const TerrainEditor: React.FC<TerrainEditorProps> = ({
 
     const isPaintingRef = useRef(false);
     const strokeTargetHeightRef = useRef<number | null>(null);
+    
+    // Refs for keyboard controls
+    const keysPressedRef = useRef(new Set<string>());
+    const clockRef = useRef(new THREE.Clock());
 
     const updateTerrainGeometry = useCallback(() => {
         if (terrainLodsRef.current.length === 0) return;
@@ -147,6 +154,15 @@ export const TerrainEditor: React.FC<TerrainEditorProps> = ({
             seabedMesh.receiveShadow = true;
             scene.add(seabedMesh);
             
+            // Create a boundary square to visualize the editable area at water level
+            const boundaryPlaneGeometry = new THREE.PlaneGeometry(TERRAIN_WIDTH, TERRAIN_HEIGHT);
+            const boundaryEdges = new THREE.EdgesGeometry(boundaryPlaneGeometry);
+            const boundaryMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 }); // Lime green
+            const boundarySquare = new THREE.LineSegments(boundaryEdges, boundaryMaterial);
+            boundarySquare.rotation.x = -Math.PI / 2;
+            boundarySquare.position.y = LAND_LEVEL + 1; // Position it just above the water level to prevent z-fighting
+            scene.add(boundarySquare);
+            
             const sharedMaterial = new THREE.MeshStandardMaterial({
                 wireframe: false,
                 side: THREE.DoubleSide,
@@ -210,6 +226,52 @@ export const TerrainEditor: React.FC<TerrainEditorProps> = ({
 
             const animate = () => {
                 requestAnimationFrame(animate);
+
+                const delta = clockRef.current.getDelta();
+
+                if (cameraRef.current && controlsRef.current && keysPressedRef.current.size > 0) {
+                    const camera = cameraRef.current;
+                    const controls = controlsRef.current;
+                    const moveSpeed = 20000 * delta; // units per second
+                    const rotationSpeed = 1.0 * delta; // radians per second
+
+                    const forward = new THREE.Vector3();
+                    camera.getWorldDirection(forward);
+                    forward.y = 0;
+                    forward.normalize();
+
+                    const left = new THREE.Vector3().crossVectors(camera.up, forward);
+
+                    if (keysPressedRef.current.has('w')) {
+                        camera.position.addScaledVector(forward, moveSpeed);
+                        controls.target.addScaledVector(forward, moveSpeed);
+                    }
+                    if (keysPressedRef.current.has('s')) {
+                        camera.position.addScaledVector(forward, -moveSpeed);
+                        controls.target.addScaledVector(forward, -moveSpeed);
+                    }
+                    if (keysPressedRef.current.has('a')) {
+                        camera.position.addScaledVector(left, moveSpeed);
+                        controls.target.addScaledVector(left, moveSpeed);
+                    }
+                    if (keysPressedRef.current.has('d')) {
+                        camera.position.addScaledVector(left, -moveSpeed);
+                        controls.target.addScaledVector(left, -moveSpeed);
+                    }
+
+                    const toTarget = new THREE.Vector3().subVectors(controls.target, camera.position);
+                    if (keysPressedRef.current.has('q')) { // Rotate left (yaw)
+                        const quaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotationSpeed);
+                        toTarget.applyQuaternion(quaternion);
+                        controls.target.copy(camera.position).add(toTarget);
+                    }
+                    if (keysPressedRef.current.has('e')) { // Rotate right (yaw)
+                        const quaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -rotationSpeed);
+                        toTarget.applyQuaternion(quaternion);
+                        controls.target.copy(camera.position).add(toTarget);
+                    }
+                }
+
                 controls.update();
                 terrainLodsRef.current.forEach(lod => lod.update(camera));
                 renderer.render(scene, camera);
@@ -287,19 +349,52 @@ export const TerrainEditor: React.FC<TerrainEditorProps> = ({
             }
         };
 
+        const onKeyDown = (event: KeyboardEvent) => {
+            const key = event.key.toLowerCase();
+            const isUndo = (event.metaKey || event.ctrlKey) && key === 'z' && !event.shiftKey;
+            const isRedo = ((event.ctrlKey && key === 'y') || ((event.metaKey || event.ctrlKey) && key === 'z' && event.shiftKey));
+
+            if (isUndo) {
+                event.preventDefault();
+                undo();
+                return;
+            }
+
+            if (isRedo) {
+                event.preventDefault();
+                redo();
+                return;
+            }
+
+            // Prevent camera movement when interacting with UI elements
+            if (document.activeElement && ['INPUT', 'BUTTON', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+                return;
+            }
+            keysPressedRef.current.add(key);
+        };
+
+        const onKeyUp = (event: KeyboardEvent) => {
+            keysPressedRef.current.delete(event.key.toLowerCase());
+        };
+
         const currentMount = mountRef.current;
         currentMount.addEventListener('pointermove', onPointerMove);
         currentMount.addEventListener('pointerdown', onPointerDown);
         currentMount.addEventListener('pointerup', onPointerUp);
         window.addEventListener('resize', handleResize);
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('keyup', onKeyUp);
+
 
         return () => {
             currentMount.removeEventListener('pointermove', onPointerMove);
             currentMount.removeEventListener('pointerdown', onPointerDown);
             currentMount.removeEventListener('pointerup', onPointerUp);
             window.removeEventListener('resize', handleResize);
+            window.removeEventListener('keydown', onKeyDown);
+            window.removeEventListener('keyup', onKeyUp);
         };
-    }, [onPaintEnd, onPaintStart, onTerrainUpdate, tool, updateTerrainGeometry]);
+    }, [onPaintEnd, onPaintStart, onTerrainUpdate, tool, updateTerrainGeometry, undo, redo]);
 
     useEffect(() => {
         updateTerrainGeometry();

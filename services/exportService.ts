@@ -16,100 +16,177 @@ const saveDataToFile = (data: BlobPart, filename: string) => {
     URL.revokeObjectURL(url);
 };
 
-// Creates a trimmed, high-res mesh from height and color data, focusing only on the sculpted area
-const createTrimmedTerrainMesh = (heightData: Float32Array, colorData: Float32Array): THREE.Mesh | null => {
+
+// Helper for linear interpolation of vertices to find intersection with the water plane
+const interpolateVertex = (p1: THREE.Vector3, p2: THREE.Vector3, h1: number, h2: number): THREE.Vector3 => {
+    // Avoid division by zero
+    if (Math.abs(h1 - h2) < 1e-6) {
+        return p1.clone();
+    }
+    const t = (LAND_LEVEL - h1) / (h2 - h1);
+    return new THREE.Vector3().lerpVectors(p1, p2, t);
+};
+
+// Creates a mesh from scratch using a Marching Squares algorithm to generate a smooth coastline.
+const createTerrainMeshForExport = (heightData: Float32Array, colorData: Float32Array): THREE.Mesh | null => {
     const totalVerticesX = TERRAIN_SEGMENTS_X + 1;
-    const totalVerticesY = TERRAIN_SEGMENTS_Y + 1;
 
-    // 1. Find the bounding box of the sculpted area (anything above water level)
-    let minX = TERRAIN_SEGMENTS_X;
-    let minY = TERRAIN_SEGMENTS_Y;
-    let maxX = 0;
-    let maxY = 0;
-    let foundSculpt = false;
+    const vertices: number[] = [];
+    const colors: number[] = [];
+    const indices: number[] = [];
+    // Use a map with a string key to cache vertices and avoid duplicates
+    const vertexMap = new Map<string, number>();
+    let newIndexCounter = 0;
 
-    for (let y = 0; y < totalVerticesY; y++) {
-        for (let x = 0; x < totalVerticesX; x++) {
-            const index = y * totalVerticesX + x;
-            if (heightData[index] > LAND_LEVEL) {
-                minX = Math.min(minX, x);
-                minY = Math.min(minY, y);
-                maxX = Math.max(maxX, x);
-                maxY = Math.max(maxY, y);
-                foundSculpt = true;
+    const getVertexPosition = (x: number, y: number): THREE.Vector3 => {
+        const vertexX = (x / TERRAIN_SEGMENTS_X - 0.5) * TERRAIN_WIDTH;
+        const vertexZ = (y / TERRAIN_SEGMENTS_Y - 0.5) * TERRAIN_HEIGHT;
+        const height = heightData[y * totalVerticesX + x];
+        return new THREE.Vector3(vertexX, height, vertexZ);
+    };
+    
+    const getVertexColor = (x: number, y: number): THREE.Color => {
+        const colorIndex = (y * totalVerticesX + x) * 3;
+        return new THREE.Color().fromArray(colorData, colorIndex);
+    }
+
+    const addVertex = (pos: THREE.Vector3, color: THREE.Color, key: string): number => {
+        if (vertexMap.has(key)) {
+            return vertexMap.get(key)!;
+        }
+        
+        const newIndex = newIndexCounter++;
+        vertexMap.set(key, newIndex);
+        vertices.push(pos.x, pos.y, pos.z);
+        colors.push(color.r, color.g, color.b);
+        return newIndex;
+    };
+    
+    const addTriangle = (i1: number, i2: number, i3: number) => {
+        indices.push(i1, i2, i3);
+    };
+
+    // Iterate over each quad cell of the terrain grid
+    for (let y = 0; y < TERRAIN_SEGMENTS_Y; y++) {
+        for (let x = 0; x < TERRAIN_SEGMENTS_X; x++) {
+            // Define the 4 corners of the current cell
+            const corners = [
+                { x: x,     y: y },       // 0: bottom-left
+                { x: x + 1, y: y },       // 1: bottom-right
+                { x: x + 1, y: y + 1 },   // 2: top-right
+                { x: x,     y: y + 1 },   // 3: top-left
+            ];
+
+            const cornerData = corners.map(c => {
+                const pos = getVertexPosition(c.x, c.y);
+                return { pos, height: pos.y, color: getVertexColor(c.x, c.y) };
+            });
+
+            // Determine the case index based on which corners are above water level
+            let caseIndex = 0;
+            if (cornerData[0].height > LAND_LEVEL) caseIndex |= 1;
+            if (cornerData[1].height > LAND_LEVEL) caseIndex |= 2;
+            if (cornerData[2].height > LAND_LEVEL) caseIndex |= 4;
+            if (cornerData[3].height > LAND_LEVEL) caseIndex |= 8;
+
+            if (caseIndex === 0) continue; // Cell is completely underwater
+
+            // Calculate interpolated positions and colors for edge intersection points
+            const edgePoints = [
+                interpolateVertex(cornerData[0].pos, cornerData[1].pos, cornerData[0].height, cornerData[1].height),
+                interpolateVertex(cornerData[1].pos, cornerData[2].pos, cornerData[1].height, cornerData[2].height),
+                interpolateVertex(cornerData[2].pos, cornerData[3].pos, cornerData[2].height, cornerData[3].height),
+                interpolateVertex(cornerData[3].pos, cornerData[0].pos, cornerData[3].height, cornerData[0].height),
+            ];
+
+            const tValues = [
+                (LAND_LEVEL - cornerData[0].height) / (cornerData[1].height - cornerData[0].height),
+                (LAND_LEVEL - cornerData[1].height) / (cornerData[2].height - cornerData[1].height),
+                (LAND_LEVEL - cornerData[2].height) / (cornerData[3].height - cornerData[2].height),
+                (LAND_LEVEL - cornerData[3].height) / (cornerData[0].height - cornerData[3].height),
+            ];
+
+            const edgeColors = [
+                new THREE.Color().lerpColors(cornerData[0].color, cornerData[1].color, tValues[0]),
+                new THREE.Color().lerpColors(cornerData[1].color, cornerData[2].color, tValues[1]),
+                new THREE.Color().lerpColors(cornerData[2].color, cornerData[3].color, tValues[2]),
+                new THREE.Color().lerpColors(cornerData[3].color, cornerData[0].color, tValues[3]),
+            ];
+
+            // Add vertices to the mesh geometry, using a key to avoid duplicates
+            const v = cornerData.map((cd, i) => addVertex(cd.pos, cd.color, `v_${corners[i].x}_${corners[i].y}`));
+            const e = edgePoints.map((p, i) => {
+                // Create a canonical key for edge vertices to avoid duplicates
+                const c1 = corners[i];
+                const c2 = corners[(i + 1) % 4];
+                const key = `e_${Math.min(c1.x, c2.x)}_${Math.min(c1.y, c2.y)}_${Math.max(c1.x, c2.x)}_${Math.max(c1.y, c2.y)}_${i%2}`;
+                return addVertex(p, edgeColors[i], key);
+            });
+            
+            // Triangulate the cell based on its case index (CCW winding order)
+            switch (caseIndex) {
+                case 1: addTriangle(v[0], e[0], e[3]); break;
+                case 2: addTriangle(v[1], e[1], e[0]); break;
+                case 3: addTriangle(v[0], v[1], e[1]); addTriangle(v[0], e[1], e[3]); break;
+                case 4: addTriangle(v[2], e[2], e[1]); break;
+                case 5: // Ambiguous case 1
+                    addTriangle(v[0], e[0], e[3]);
+                    addTriangle(v[2], e[2], e[1]);
+                    break;
+                case 6: addTriangle(v[1], v[2], e[2]); addTriangle(v[1], e[2], e[0]); break;
+                case 7: // v3 out
+                    addTriangle(v[0], v[1], v[2]);
+                    addTriangle(v[0], v[2], e[2]);
+                    addTriangle(v[0], e[2], e[3]);
+                    break;
+                case 8: addTriangle(v[3], e[3], e[2]); break;
+                case 9: addTriangle(v[0], v[3], e[2]); addTriangle(v[0], e[2], e[0]); break;
+                case 10: // Ambiguous case 2
+                    addTriangle(v[1], e[1], e[0]);
+                    addTriangle(v[3], e[3], e[2]);
+                    break;
+                case 11: // v2 out
+                    addTriangle(v[0], v[1], e[1]);
+                    addTriangle(v[0], e[1], e[2]);
+                    addTriangle(v[0], e[2], v[3]);
+                    break;
+                case 12: addTriangle(v[3], v[2], e[1]); addTriangle(v[3], e[1], e[3]); break;
+                case 13: // v1 out
+                    addTriangle(v[0], e[0], e[1]);
+                    addTriangle(v[0], e[1], v[2]);
+                    addTriangle(v[0], v[2], v[3]);
+                    break;
+                case 14: // v0 out
+                    addTriangle(v[1], v[2], v[3]);
+                    addTriangle(v[1], v[3], e[3]);
+                    addTriangle(v[1], e[3], e[0]);
+                    break;
+                case 15: // All in
+                    addTriangle(v[0], v[1], v[2]);
+                    addTriangle(v[0], v[2], v[3]);
+                    break;
             }
         }
     }
 
-    if (!foundSculpt) {
-        return null; // No terrain above water to export
+    if (vertices.length === 0) {
+        return null; // Nothing to export
     }
 
-    // 2. Add some padding to the bounding box to ensure edges aren't cut off sharply
-    const padding = 2;
-    minX = Math.max(0, minX - padding);
-    minY = Math.max(0, minY - padding);
-    maxX = Math.min(TERRAIN_SEGMENTS_X, maxX + padding);
-    maxY = Math.min(TERRAIN_SEGMENTS_Y, maxY + padding);
-
-    const segmentsX = maxX - minX;
-    const segmentsY = maxY - minY;
-
-    if (segmentsX <= 0 || segmentsY <= 0) {
-        return null; // Nothing to export if the area is just a line or point
-    }
-    
-    // 3. Create a new geometry sized to the trimmed area
-    const newWidth = (segmentsX / TERRAIN_SEGMENTS_X) * TERRAIN_WIDTH;
-    const newHeight = (segmentsY / TERRAIN_SEGMENTS_Y) * TERRAIN_HEIGHT;
-    
-    const geometry = new THREE.PlaneGeometry(newWidth, newHeight, segmentsX, segmentsY);
-    geometry.rotateX(-Math.PI / 2);
-
-    const newPositions = geometry.attributes.position;
-    const newColorData = new Float32Array((segmentsX + 1) * (segmentsY + 1) * 3);
-    
-    // 4. Copy the relevant height and color data from the original arrays to the new geometry
-    for (let y = 0; y <= segmentsY; y++) {
-        for (let x = 0; x <= segmentsX; x++) {
-            const originalX = minX + x;
-            const originalY = minY + y;
-            
-            const originalIndex = originalY * totalVerticesX + originalX;
-            const newIndex = y * (segmentsX + 1) + x;
-
-            const height = heightData[originalIndex];
-            newPositions.setY(newIndex, Math.max(height, LAND_LEVEL)); // Clamp at water level
-
-            const colorIndex = originalIndex * 3;
-            const newColorIndex = newIndex * 3;
-            newColorData[newColorIndex] = colorData[colorIndex];
-            newColorData[newColorIndex + 1] = colorData[colorIndex + 1];
-            newColorData[newColorIndex + 2] = colorData[colorIndex + 2];
-        }
-    }
-    
-    geometry.setAttribute('color', new THREE.BufferAttribute(newColorData, 3));
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setIndex(indices);
     geometry.computeVertexNormals();
 
-    const material = new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        side: THREE.DoubleSide
-    });
+    const material = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide });
     
-    const mesh = new THREE.Mesh(geometry, material);
-
-    // 5. Position the new, smaller mesh correctly in world space so its location matches the original
-    const centerX = ((minX + maxX) / 2 / TERRAIN_SEGMENTS_X - 0.5) * TERRAIN_WIDTH;
-    const centerZ = ((minY + maxY) / 2 / TERRAIN_SEGMENTS_Y - 0.5) * TERRAIN_HEIGHT;
-    mesh.position.set(centerX, 0, centerZ);
-    
-    return mesh;
+    return new THREE.Mesh(geometry, material);
 };
 
 
 export const exportModel = (heightData: Float32Array, colorData: Float32Array, format: 'gltf' | 'glb' | 'obj') => {
-    const mesh = createTrimmedTerrainMesh(heightData, colorData);
+    const mesh = createTerrainMeshForExport(heightData, colorData);
     
     if (!mesh) {
         alert("Nothing to export. Please sculpt some terrain above the water level first.");
