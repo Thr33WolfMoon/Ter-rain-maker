@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Tool, BrushSettings, PaintMode } from '../types';
+import { Tool, BrushSettings, PaintMode, TextureSettings } from '../types';
 import { RaiseIcon, LowerIcon, FlattenIcon, SmoothIcon, PaintIcon, PlaneIcon, UndoIcon, RedoIcon, ExportIcon, ErosionIcon, ImportPaletteIcon, ImportTextureIcon } from './Icon';
 import { Color } from 'three';
 
@@ -29,6 +29,8 @@ interface ToolbarProps {
     paintTexture: HTMLImageElement | null;
     onImportTexture: (file: File) => void;
     isImportingTexture: boolean;
+    textureSettings: TextureSettings;
+    onSetTextureSettings: (settings: TextureSettings) => void;
 }
 
 const ToolButton: React.FC<{
@@ -53,7 +55,7 @@ const ToolButton: React.FC<{
 export const Toolbar: React.FC<ToolbarProps> = ({
     activeTool, onSetTool, brushSettings, onSetBrushSettings, undo, redo, canUndo, canRedo, paintColor, onSetPaintColor,
     sunBrightness, onSetSunBrightness, onExport, onErosion, onGlobalFlatten, paintPalette, onImportPalette, isImportingPalette,
-    paintMode, onSetPaintMode, paintTexture, onImportTexture, isImportingTexture
+    paintMode, onSetPaintMode, paintTexture, onImportTexture, isImportingTexture, textureSettings, onSetTextureSettings
 }) => {
     
     const handlePaletteFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -196,6 +198,36 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                                     onChange={handleTextureFileChange}
                                 />
                             </label>
+
+                            <div className="w-full pt-2 mt-2 border-t border-gray-700 space-y-4">
+                                <div>
+                                    <label htmlFor="texture-scale" className="flex justify-between text-sm text-gray-300 mb-1">
+                                        <span>Scale</span>
+                                        <span>{textureSettings.scale.toFixed(2)}</span>
+                                    </label>
+                                    <input id="texture-scale" type="range" min="0.1" max="10" step="0.1" value={textureSettings.scale}
+                                        onChange={(e) => onSetTextureSettings({ ...textureSettings, scale: parseFloat(e.target.value) })}
+                                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
+                                </div>
+                                <div>
+                                    <label htmlFor="texture-rotation" className="flex justify-between text-sm text-gray-300 mb-1">
+                                        <span>Rotation</span>
+                                        <span>{textureSettings.rotation.toFixed(0)}°</span>
+                                    </label>
+                                    <input id="texture-rotation" type="range" min="0" max="360" step="1" value={textureSettings.rotation}
+                                        onChange={(e) => onSetTextureSettings({ ...textureSettings, rotation: parseFloat(e.target.value) })}
+                                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
+                                </div>
+                                <div>
+                                    <label htmlFor="texture-blend-weight" className="flex justify-between text-sm text-gray-300 mb-1">
+                                        <span>Blend Weight</span>
+                                        <span>{textureSettings.blendWeight.toFixed(2)}</span>
+                                    </label>
+                                    <input id="texture-blend-weight" type="range" min="0" max="1" step="0.05" value={textureSettings.blendWeight}
+                                        onChange={(e) => onSetTextureSettings({ ...textureSettings, blendWeight: parseFloat(e.target.value) })}
+                                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>

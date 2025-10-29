@@ -1,6 +1,6 @@
 
 import { Vector3, Color } from 'three';
-import { Tool, BrushSettings, PaintMode } from '../types';
+import { Tool, BrushSettings, PaintMode, TextureSettings } from '../types';
 import { 
     TERRAIN_WIDTH, TERRAIN_HEIGHT, TERRAIN_SEGMENTS_X, TERRAIN_SEGMENTS_Y, SEA_FLOOR_LEVEL,
     SNOW_LEVEL, ROCK_LEVEL, LAND_LEVEL,
@@ -269,7 +269,8 @@ const applyTexturePaint = (
     colorData: Float32Array,
     intersectionPoint: Vector3,
     brush: BrushSettings,
-    texture: HTMLImageElement
+    texture: HTMLImageElement,
+    textureSettings: TextureSettings
 ): Float32Array => {
     const newColorData = new Float32Array(colorData);
     const brushRadius = brush.size / 2;
@@ -280,36 +281,87 @@ const applyTexturePaint = (
     const ctx = getTextureContext(texture);
     if (!ctx) return newColorData;
 
+    // Helper for bilinear sampling. Safely wraps coordinates.
+    const getPixel = (x_raw: number, y_raw: number): Uint8ClampedArray => {
+        const x = (Math.floor(x_raw) % texture.width + texture.width) % texture.width;
+        const y = (Math.floor(y_raw) % texture.height + texture.height) % texture.height;
+        return ctx.getImageData(x, y, 1, 1).data;
+    };
+
     for (let y = 0; y < VERTICES_Y; y++) {
         for (let x = 0; x < VERTICES_X; x++) {
             const vertexX = (x / TERRAIN_SEGMENTS_X - 0.5) * TERRAIN_WIDTH;
             const vertexZ = (y / TERRAIN_SEGMENTS_Y - 0.5) * TERRAIN_HEIGHT;
 
-            const dx = vertexX - intersectionPoint.x;
-            const dz = vertexZ - intersectionPoint.z;
-            const distSq = dx * dx + dz * dz;
+            const dxInitial = vertexX - intersectionPoint.x;
+            const dzInitial = vertexZ - intersectionPoint.z;
+            const distSq = dxInitial * dxInitial + dzInitial * dzInitial;
 
             if (distSq < brushRadiusSq) {
                 const index = y * VERTICES_X + x;
                 const currentHeight = heightData[index];
                 
                 if (currentHeight >= LAND_LEVEL) {
-                    // Map vertex position within the brush to texture UV coordinates
-                    const u = (dx / brushRadius + 1) / 2;
-                    const v = 1 - ((dz / brushRadius + 1) / 2); // Invert Z for correct image orientation
+                    // Apply rotation to the coordinate system of the brush
+                    const rotationInRadians = (textureSettings.rotation || 0) * (Math.PI / 180);
+                    const cosR = Math.cos(rotationInRadians);
+                    const sinR = Math.sin(rotationInRadians);
+                    const dx = dxInitial * cosR - dzInitial * sinR;
+                    const dz = dxInitial * sinR + dzInitial * cosR;
 
-                    const texX = Math.floor(u * texture.width);
-                    const texY = Math.floor(v * texture.height);
+                    // Normalize vertex position relative to the brush into UV space [0, 1]
+                    const u = (dx / brushRadius) * 0.5 + 0.5;
+                    const v = (dz / brushRadius) * 0.5 + 0.5;
                     
-                    const pixelData = ctx.getImageData(texX, texY, 1, 1).data;
-                    textureColor.setRGB(pixelData[0] / 255, pixelData[1] / 255, pixelData[2] / 255);
+                    // Apply texture scale (tiling) within the brush projection
+                    const u_scaled = u * textureSettings.scale;
+                    const v_scaled = v * textureSettings.scale;
+
+                    // --- Bilinear Interpolation Sampling ---
+                    
+                    // Calculate the exact, non-integer pixel coordinates.
+                    // The -0.5 offset aligns sampling with pixel centers for accuracy.
+                    // Flip V coordinate because canvas context origin (0,0) is top-left.
+                    const u_pixel = u_scaled * texture.width - 0.5;
+                    const v_pixel = (1.0 - v_scaled) * texture.height - 0.5;
+                    
+                    const texX0 = Math.floor(u_pixel);
+                    const texY0 = Math.floor(v_pixel);
+                    const fracX = u_pixel - texX0;
+                    const fracY = v_pixel - texY0;
+
+                    // Sample the 4 neighboring pixels
+                    const p00 = getPixel(texX0, texY0);     // Top-left
+                    const p10 = getPixel(texX0 + 1, texY0); // Top-right
+                    const p01 = getPixel(texX0, texY0 + 1); // Bottom-left
+                    const p11 = getPixel(texX0 + 1, texY0 + 1); // Bottom-right
+
+                    // Interpolate in the x-direction for top and bottom rows
+                    const topR = p00[0] * (1 - fracX) + p10[0] * fracX;
+                    const topG = p00[1] * (1 - fracX) + p10[1] * fracX;
+                    const topB = p00[2] * (1 - fracX) + p10[2] * fracX;
+
+                    const bottomR = p01[0] * (1 - fracX) + p11[0] * fracX;
+                    const bottomG = p01[1] * (1 - fracX) + p11[1] * fracX;
+                    const bottomB = p01[2] * (1 - fracX) + p11[2] * fracX;
+
+                    // Interpolate in the y-direction between the two new rows
+                    const finalR = topR * (1 - fracY) + bottomR * fracY;
+                    const finalG = topG * (1 - fracY) + bottomG * fracY;
+                    const finalB = topB * (1 - fracY) + bottomB * fracY;
+
+                    // Set color from sRGB pixel data and CONVERT TO LINEAR color space for correct blending.
+                    textureColor.setRGB(finalR / 255, finalG / 255, finalB / 255).convertSRGBToLinear();
 
                     const distance = Math.sqrt(distSq);
                     const falloff = 1 - smoothStep(0, brushRadius, distance);
-                    const strength = DEFAULT_STRENGTH * falloff;
+                    const strength = textureSettings.blendWeight * falloff;
                     
+                    // Read existing linear color from the buffer
                     existingColor.fromArray(newColorData, index * 3);
+                    // Blend the two linear colors
                     existingColor.lerp(textureColor, strength);
+                    // Write the resulting linear color back to the buffer
                     existingColor.toArray(newColorData, index * 3);
                 }
             }
@@ -465,6 +517,7 @@ export const applyBrush = (
         paintColor?: Color;
         paintMode?: PaintMode;
         paintTexture?: HTMLImageElement | null;
+        textureSettings?: TextureSettings;
     }
 ): { heightData: Float32Array; colorData: Float32Array } | null => {
     switch (tool) {
@@ -481,8 +534,8 @@ export const applyBrush = (
             if (options.targetHeight === undefined) return null;
             return applyPlane(heightData, colorData, intersectionPoint, brush, options.targetHeight);
         case Tool.Paint:
-            if (options.paintMode === 'texture' && options.paintTexture) {
-                const newColorData = applyTexturePaint(heightData, colorData, intersectionPoint, brush, options.paintTexture);
+            if (options.paintMode === 'texture' && options.paintTexture && options.textureSettings) {
+                const newColorData = applyTexturePaint(heightData, colorData, intersectionPoint, brush, options.paintTexture, options.textureSettings);
                 return { heightData, colorData: newColorData };
             }
             if (options.paintMode === 'color' && options.paintColor) {

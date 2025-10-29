@@ -14,6 +14,12 @@ export interface BrushSettings {
 
 export type PaintMode = 'color' | 'texture';
 
+export interface TextureSettings {
+    scale: number;
+    rotation: number;
+    blendWeight: number;
+}
+
 export interface TerrainFeature {
   type: 'mountain' | 'ridge' | 'lake' | 'valley';
   x: number;

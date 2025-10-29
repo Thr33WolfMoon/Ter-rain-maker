@@ -7,7 +7,7 @@ import { useUndoableState } from './hooks/useUndoableState';
 import { applyBrush, generateInitialColorData, applyGlobalSmooth, applyGlobalFlatten } from './services/terrainUtils';
 import { exportModel } from './services/exportService';
 import { processPaletteImage } from './services/paletteService';
-import { Tool, BrushSettings, PaintMode } from './types';
+import { Tool, BrushSettings, PaintMode, TextureSettings } from './types';
 import { TERRAIN_SEGMENTS_X, TERRAIN_SEGMENTS_Y, SEA_FLOOR_LEVEL, PAINT_PALETTE } from './constants';
 
 const App: React.FC = () => {
@@ -22,6 +22,11 @@ const App: React.FC = () => {
     const [paintMode, setPaintMode] = useState<PaintMode>('color');
     const [paintTexture, setPaintTexture] = useState<HTMLImageElement | null>(null);
     const [isImportingTexture, setIsImportingTexture] = useState(false);
+    const [textureSettings, setTextureSettings] = useState<TextureSettings>({
+        scale: 1.0,
+        rotation: 0,
+        blendWeight: 0.5,
+    });
 
     const initialHeightData = new Float32Array((TERRAIN_SEGMENTS_X + 1) * (TERRAIN_SEGMENTS_Y + 1)).fill(SEA_FLOOR_LEVEL);
     const initialColorData = generateInitialColorData(initialHeightData);
@@ -50,10 +55,12 @@ const App: React.FC = () => {
             paintColor?: Color;
             paintMode?: PaintMode;
             paintTexture?: HTMLImageElement | null;
+            textureSettings?: TextureSettings;
         } = { 
             paintColor,
             paintMode,
             paintTexture,
+            textureSettings,
         };
 
         // For Flatten and Plane, the target height is sampled from the terrain on pointer down.
@@ -72,7 +79,7 @@ const App: React.FC = () => {
          if (newDatas) {
             setLiveState(newDatas);
         }
-    }, [liveState, tool, brushSettings, paintColor, paintMode, paintTexture]);
+    }, [liveState, tool, brushSettings, paintColor, paintMode, paintTexture, textureSettings]);
     
     const handleExport = useCallback((format: 'gltf' | 'glb' | 'obj') => {
         exportModel(committedState.heightData, committedState.colorData, format);
@@ -162,6 +169,8 @@ const App: React.FC = () => {
                 paintTexture={paintTexture}
                 onImportTexture={handleImportTexture}
                 isImportingTexture={isImportingTexture}
+                textureSettings={textureSettings}
+                onSetTextureSettings={setTextureSettings}
             />
             <main className="flex-1 h-full">
                 <TerrainEditor 
