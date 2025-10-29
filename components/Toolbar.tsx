@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tool, BrushSettings } from '../types';
-import { RaiseIcon, LowerIcon, FlattenIcon, SmoothIcon, PaintIcon, PlaneIcon, UndoIcon, RedoIcon } from './Icon';
+import { RaiseIcon, LowerIcon, FlattenIcon, SmoothIcon, PaintIcon, PlaneIcon, UndoIcon, RedoIcon, ExportIcon } from './Icon';
 import { PAINT_PALETTE } from '../constants';
 import { Color } from 'three';
 
@@ -16,6 +16,9 @@ interface ToolbarProps {
     canRedo: boolean;
     paintColor: Color;
     onSetPaintColor: (color: Color) => void;
+    sunBrightness: number;
+    onSetSunBrightness: (value: number) => void;
+    onExport: (format: 'gltf' | 'glb' | 'obj') => void;
 }
 
 const ToolButton: React.FC<{
@@ -38,7 +41,8 @@ const ToolButton: React.FC<{
 
 
 export const Toolbar: React.FC<ToolbarProps> = ({
-    activeTool, onSetTool, brushSettings, onSetBrushSettings, undo, redo, canUndo, canRedo, paintColor, onSetPaintColor
+    activeTool, onSetTool, brushSettings, onSetBrushSettings, undo, redo, canUndo, canRedo, paintColor, onSetPaintColor,
+    sunBrightness, onSetSunBrightness, onExport
 }) => {
 
     return (
@@ -77,6 +81,28 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                     </div>
                 </div>
             </div>
+            
+            <div>
+                <h2 className="text-sm font-semibold text-gray-400 mb-3">Scene Settings</h2>
+                <div className="space-y-4">
+                    <div>
+                        <label htmlFor="sun-brightness" className="flex justify-between text-sm text-gray-300 mb-1">
+                            <span>Sun Brightness</span>
+                            <span>{sunBrightness.toFixed(2)}</span>
+                        </label>
+                        <input
+                            id="sun-brightness"
+                            type="range"
+                            min="0"
+                            max="3"
+                            step="0.05"
+                            value={sunBrightness}
+                            onChange={(e) => onSetSunBrightness(parseFloat(e.target.value))}
+                            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                        />
+                    </div>
+                </div>
+            </div>
 
             {activeTool === Tool.Paint && (
                 <div>
@@ -108,6 +134,24 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                     <button onClick={redo} disabled={!canRedo} className="flex-1 flex items-center justify-center p-2 bg-gray-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-600 transition-colors">
                         <RedoIcon />
                         <span className="ml-2">Redo</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div>
+                <h2 className="text-sm font-semibold text-gray-400 mb-3">Export</h2>
+                <div className="flex flex-col space-y-2">
+                     <button onClick={() => onExport('glb')} className="w-full flex items-center justify-center p-2 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors">
+                        <ExportIcon />
+                        <span className="ml-2">Export GLB</span>
+                    </button>
+                    <button onClick={() => onExport('gltf')} className="w-full flex items-center justify-center p-2 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors">
+                        <ExportIcon />
+                        <span className="ml-2">Export GLTF</span>
+                    </button>
+                    <button onClick={() => onExport('obj')} className="w-full flex items-center justify-center p-2 bg-gray-700 rounded-md hover:bg-gray-600 transition-colors">
+                        <ExportIcon />
+                        <span className="ml-2">Export OBJ</span>
                     </button>
                 </div>
             </div>

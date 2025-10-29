@@ -16,9 +16,12 @@ interface TerrainEditorProps {
     onPaintEnd: () => void;
     tool: Tool;
     brushSettings: BrushSettings;
+    sunBrightness: number;
 }
 
-export const TerrainEditor: React.FC<TerrainEditorProps> = ({ heightData, colorData, onTerrainUpdate, onPaintStart, onPaintEnd, tool, brushSettings }) => {
+export const TerrainEditor: React.FC<TerrainEditorProps> = ({ 
+    heightData, colorData, onTerrainUpdate, onPaintStart, onPaintEnd, tool, brushSettings, sunBrightness 
+}) => {
     const mountRef = useRef<HTMLDivElement>(null);
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
     const sceneRef = useRef<THREE.Scene | null>(null);
@@ -28,6 +31,7 @@ export const TerrainEditor: React.FC<TerrainEditorProps> = ({ heightData, colorD
     const brushHelperRef = useRef<THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial> | null>(null);
     const raycasterRef = useRef(new THREE.Raycaster());
     const pointerRef = useRef(new THREE.Vector2());
+    const directionalLightRef = useRef<THREE.DirectionalLight | null>(null);
 
     const isPaintingRef = useRef(false);
     const strokeTargetHeightRef = useRef<number | null>(null);
@@ -82,7 +86,6 @@ export const TerrainEditor: React.FC<TerrainEditorProps> = ({ heightData, colorD
         if(!rendererRef.current) {
             const scene = new THREE.Scene();
             scene.background = waterColor;
-            scene.fog = new THREE.Fog(waterColor, TERRAIN_WIDTH / 2, TERRAIN_WIDTH * 2);
             sceneRef.current = scene;
 
             const camera = new THREE.PerspectiveCamera(75, mountRef.current.clientWidth / mountRef.current.clientHeight, 100, TERRAIN_WIDTH * 2);
@@ -121,6 +124,7 @@ export const TerrainEditor: React.FC<TerrainEditorProps> = ({ heightData, colorD
             directionalLight.shadow.camera.near = 1;
             directionalLight.shadow.camera.far = 150000;
             scene.add(directionalLight);
+            directionalLightRef.current = directionalLight;
 
             const waterGeometry = new THREE.PlaneGeometry(TERRAIN_WIDTH * 10, TERRAIN_HEIGHT * 10);
             const waterMaterial = new THREE.MeshStandardMaterial({
@@ -309,6 +313,12 @@ export const TerrainEditor: React.FC<TerrainEditorProps> = ({ heightData, colorD
             brushHelperRef.current.geometry = new THREE.RingGeometry(size, size + (size * 0.05) + 10, 64);
         }
     }, [brushSettings.size]);
+
+    useEffect(() => {
+        if (directionalLightRef.current) {
+            directionalLightRef.current.intensity = sunBrightness;
+        }
+    }, [sunBrightness]);
 
     return <div ref={mountRef} className="w-full h-full cursor-none" />;
 };

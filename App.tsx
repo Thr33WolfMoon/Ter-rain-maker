@@ -4,6 +4,7 @@ import { TerrainEditor } from './components/TerrainEditor';
 import { Toolbar } from './components/Toolbar';
 import { useUndoableState } from './hooks/useUndoableState';
 import { applyBrush, generateInitialColorData } from './services/terrainUtils';
+import { exportModel } from './services/exportService';
 import { Tool, BrushSettings } from './types';
 import { TERRAIN_SEGMENTS_X, TERRAIN_SEGMENTS_Y, SEA_FLOOR_LEVEL, PAINT_PALETTE } from './constants';
 
@@ -13,6 +14,7 @@ const App: React.FC = () => {
         size: 10000,
     });
     const [paintColor, setPaintColor] = useState<Color>(PAINT_PALETTE[0].color);
+    const [sunBrightness, setSunBrightness] = useState<number>(1.5);
 
     const initialHeightData = new Float32Array((TERRAIN_SEGMENTS_X + 1) * (TERRAIN_SEGMENTS_Y + 1)).fill(SEA_FLOOR_LEVEL);
     const initialColorData = generateInitialColorData(initialHeightData);
@@ -55,6 +57,10 @@ const App: React.FC = () => {
             setLiveState(newDatas);
         }
     }, [liveState, tool, brushSettings, paintColor]);
+    
+    const handleExport = useCallback((format: 'gltf' | 'glb' | 'obj') => {
+        exportModel(committedState.heightData, committedState.colorData, format);
+    }, [committedState]);
 
     return (
         <div className="w-screen h-screen flex">
@@ -69,6 +75,9 @@ const App: React.FC = () => {
                 canRedo={canRedo}
                 paintColor={paintColor}
                 onSetPaintColor={setPaintColor}
+                sunBrightness={sunBrightness}
+                onSetSunBrightness={setSunBrightness}
+                onExport={handleExport}
             />
             <main className="flex-1 h-full">
                 <TerrainEditor 
@@ -79,6 +88,7 @@ const App: React.FC = () => {
                     onPaintEnd={handlePaintEnd}
                     tool={tool}
                     brushSettings={brushSettings}
+                    sunBrightness={sunBrightness}
                 />
             </main>
              <div className="absolute bottom-4 right-4 bg-gray-900 bg-opacity-70 p-2 rounded-lg text-xs text-gray-300">
